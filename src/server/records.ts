@@ -1,0 +1,38 @@
+/**
+ * Small typed wrappers over the server-side records APIs (action `tools` and
+ * the job's owner context) so the rest of the code never handles raw
+ * envelopes or forgets a limit.
+ */
+
+import type { ActionTools } from 'deepspace/worker'
+
+export type Envelope<T> = { recordId: string; data: T; createdAt?: string | number }
+
+/** Hard ceiling for any one query. An eval has ≤ 8 prompts × 3 models, so
+ *  only `votes` can approach it; queryAll fails loudly instead of truncating. */
+export const QUERY_LIMIT = 2000
+
+export class ActionError extends Error {}
+
+export async function queryAll<T>(tools: ActionTools, collection: string, where: Record<string, unknown>): Promise<Envelope<T>[]> {
+  const r = await tools.query<Record<string, unknown>>(collection, { where, limit: QUERY_LIMIT })
+  if (!r.success) throw new ActionError(`Could not read ${collection}`)
+  const records = r.data.records as unknown as Envelope<T>[]
+  if (typeof r.data.count === 'number' && r.data.count > records.length) {
+    throw new ActionError(`${collection} result was truncated (${records.length}/${r.data.count})`)
+  }
+  return records
+}
+
+export async function getOne<T>(tools: ActionTools, collection: string, id: string): Promise<Envelope<T> | null> {
+  if (!id || typeof id !== 'string') return null
+  const r = await tools.get<Record<string, unknown>>(collection, id)
+  if (!r.success) return null
+  return r.data.record as unknown as Envelope<T>
+}
+
+export async function must<T>(p: Promise<{ success: boolean; data?: T; error?: string }>, what: string): Promise<T> {
+  const r = await p
+  if (!r.success) throw new ActionError(`${what} failed${r.error ? `: ${r.error}` : ''}`)
+  return r.data as T
+}
