@@ -83,6 +83,14 @@ describe('orientation and outcome mapping', () => {
     expect(flips).toBeGreaterThan(400)
     expect(flips).toBeLessThan(600)
   })
+  it('flips sibling pairs of one prompt independently (not by character parity)', () => {
+    // Real pair ids differ only in the contestant suffix (01, 02, 12). A hash bit
+    // that is just the parity of the input's characters would flip 01 and 12 together for every voter.
+    const same = Array.from({ length: 200 }, (_, i) => `voter${i}`)
+      .filter((v) => isFlipped(v, 'e1--p1--01') === isFlipped(v, 'e1--p1--12')).length
+    expect(same).toBeGreaterThan(60)
+    expect(same).toBeLessThan(140)
+  })
   it('maps presented choice back to canonical outcome', () => {
     expect(toOutcome('left', false)).toBe('a')
     expect(toOutcome('right', false)).toBe('b')

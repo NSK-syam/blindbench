@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, useToast } from '@/components/ui'
 import { callAction } from '../lib/api'
 import type { PresentedChoice } from '../lib/domain'
 import type { PresentedPair } from '../types'
 
-type State = { kind: 'loading' } | { kind: 'done' } | { kind: 'error'; message: string } | { kind: 'pair'; pair: PresentedPair }
+type State = { kind: 'loading' } | { kind: 'done' } | { kind: 'closed' } | { kind: 'error'; message: string } | { kind: 'pair'; pair: PresentedPair }
 
 const KEYS: Record<string, PresentedChoice> = { '1': 'left', '2': 'right', '3': 'tie', '4': 'both_bad' }
 
@@ -12,39 +12,54 @@ export function VotePanel({ evalId, onActivity }: { evalId: string; onActivity?:
   const { error: toastError } = useToast()
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [sending, setSending] = useState(false)
+  // Synchronous guard: two key presses in one tick both see the stale `sending` state.
+  const inFlight = useRef(false)
+  // Only the latest load may set state (a "Try again" can overlap the post-vote load).
+  const loadSeq = useRef(0)
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     setState({ kind: 'loading' })
     try {
       const pair = await callAction<PresentedPair | null>('nextPair', { evalId })
-      setState(pair ? { kind: 'pair', pair } : { kind: 'done' })
+      if (seq === loadSeq.current) setState(pair ? { kind: 'pair', pair } : { kind: 'done' })
     } catch (err) {
-      setState({ kind: 'error', message: err instanceof Error ? err.message : 'Could not load a comparison' })
+      if (seq === loadSeq.current) setState({ kind: 'error', message: err instanceof Error ? err.message : 'Could not load a comparison' })
     }
   }, [evalId])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => { onActivity?.(state.kind === 'pair' ? 'voting' : 'idle') }, [state.kind, onActivity])
+  // The page unmounts this panel when voting closes; don't leave presence stuck on "voting".
+  useEffect(() => () => onActivity?.('idle'), [onActivity])
 
   const vote = useCallback(async (choice: PresentedChoice) => {
-    if (state.kind !== 'pair' || sending) return
+    if (state.kind !== 'pair' || inFlight.current) return
+    inFlight.current = true
     setSending(true)
+    let closed = false
     try {
       await callAction('castVote', { evalId, pairId: state.pair.pairId, choice })
     } catch (err) {
       // "already voted" is harmless (double-submit, second tab); anything else is worth surfacing.
       const msg = err instanceof Error ? err.message : ''
-      if (!/already voted/i.test(msg)) toastError('Vote not recorded', msg)
+      // nextPair returns null once voting closes, which would read as "you've reviewed every comparison".
+      closed = /voting is closed/i.test(msg)
+      if (!closed && !/already voted/i.test(msg)) toastError('Vote not recorded', msg)
     } finally {
+      inFlight.current = false
       setSending(false)
-      void load()
+      if (closed) setState({ kind: 'closed' })
+      else void load()
     }
-  }, [evalId, state, sending, load, toastError])
+  }, [evalId, state, load, toastError])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return
-      if (e.metaKey || e.ctrlKey || e.altKey) return
+      // A held key auto-repeats and would cast a vote on the next pair as soon as it loads.
+      if (e.repeat || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target
+      if (t instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable || t.closest('[role="dialog"]'))) return
       const c = KEYS[e.key]
       if (c) void vote(c)
     }
@@ -54,6 +69,7 @@ export function VotePanel({ evalId, onActivity }: { evalId: string; onActivity?:
 
   if (state.kind === 'loading') return <Panel><p className="text-sm text-muted-foreground">Loading the next comparison…</p></Panel>
   if (state.kind === 'error') return <Panel><p className="text-sm text-destructive">{state.message}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void load()}>Try again</Button></Panel>
+  if (state.kind === 'closed') return <Panel><p className="font-medium">Voting has closed.</p><p className="text-sm text-muted-foreground">The owner closed voting before this vote arrived, so it wasn’t counted.</p></Panel>
   if (state.kind === 'done') return <Panel><p className="font-medium">You’ve reviewed every comparison.</p><p className="text-sm text-muted-foreground">Results stay anonymous until the owner closes voting.</p></Panel>
 
   const { pair } = state
