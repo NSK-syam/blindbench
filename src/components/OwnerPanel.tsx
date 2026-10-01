@@ -45,7 +45,7 @@ export function OwnerPanel({ evalId, data }: { evalId: string; data: EvalData })
   const link = typeof window !== 'undefined' ? `${window.location.origin}/e/${evalId}` : ''
 
   return (
-    <section aria-label="Owner controls" className="space-y-4 rounded-xl border border-border p-5">
+    <section aria-label="Owner controls" className="space-y-4 rounded-xl border border-border bg-card/40 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Owner controls</h2>
         <div className="flex flex-wrap gap-2">

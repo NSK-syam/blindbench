@@ -44,3 +44,34 @@
   --color-shell: #fafafa;
   --color-shell-panel: #ffffff;
 }
+
+/* Bench — BlindBench's own theme. Warm near-black "lab bench" with an amber
+ * accent: amber marks the one thing to act on (vote, generate, open voting);
+ * everything else stays quiet so the two answers carry the page. */
+[data-theme="bench"] {
+  color-scheme: dark;
+  --color-background: #0f0f10;
+  --color-foreground: #eceae4;
+  --color-card: #171718;
+  --color-card-foreground: #eceae4;
+  --color-popover: #1b1b1d;
+  --color-popover-foreground: #eceae4;
+  --color-primary: #e8b04b;
+  --color-primary-foreground: #1a1306;
+  --color-secondary: #1f1f21;
+  --color-secondary-foreground: #eceae4;
+  --color-muted: #1d1d1f;
+  --color-muted-foreground: #a19e96;
+  --color-accent: #26262a;
+  --color-accent-foreground: #eceae4;
+  --color-destructive: #e5534b;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #2b2b2f;
+  --color-input: #34343a;
+  --color-ring: #e8b04b;
+  --radius: 0.625rem;
+  --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 4px 12px 0 rgba(0, 0, 0, 0.35);
+  --color-shell: #0c0c0d;
+  --color-shell-panel: #141415;
+}

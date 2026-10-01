@@ -21,7 +21,7 @@ import { DeepSpaceAuthProvider, useAuthStatus } from 'deepspace'
 import { RecordProvider, RecordScope } from 'deepspace'
 import Navigation from '../../components/Navigation'
 import { useToast } from '@/components/ui'
-import { APP_NAME, SCOPE_ID } from '../../constants'
+import { APP_DISPLAY_NAME, SCOPE_ID } from '../../constants'
 import { schemas } from '../../schemas'
 
 export default function AppLayout() {
@@ -29,7 +29,7 @@ export default function AppLayout() {
     <DeepSpaceAuthProvider>
       {/* The prerendered landing owns the document <title> and React drops it
           when <Seo> unmounts, so every route without <Seo> sets its own. */}
-      <title>{APP_NAME}</title>
+      <title>{APP_DISPLAY_NAME}</title>
       <AuthBoot>
         <div className="flex h-screen flex-col bg-background overflow-hidden">
           <Navigation />

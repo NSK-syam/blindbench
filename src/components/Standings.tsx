@@ -12,7 +12,7 @@ export function Standings({ evalId, data }: { evalId: string; data: EvalData }) 
   const covered = new Set(votes.map((v) => v.pairId)).size
 
   return (
-    <section aria-labelledby="standings" className="rounded-xl border border-border p-5">
+    <section aria-labelledby="standings" className="rounded-xl border border-border bg-card/40 p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="standings" className="text-lg font-semibold">Standings</h2>
         <p className="text-xs text-muted-foreground">
@@ -35,9 +35,14 @@ export function Standings({ evalId, data }: { evalId: string; data: EvalData }) 
                   <td className="pr-4 tabular-nums">{r.losses}</td>
                   <td className="pr-4 tabular-nums">{r.ties}</td>
                   <td className="pr-4 tabular-nums">{r.bothBad}</td>
-                  <td className="tabular-nums">
-                    {r.decisiveWinRate === null ? '—' : `${Math.round(r.decisiveWinRate * 100)}%`}
-                    <span className="ml-1 text-xs text-muted-foreground">({r.wins}/{r.decisiveVotes})</span>
+                  <td className="min-w-40 tabular-nums">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden>
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${(r.decisiveWinRate ?? 0) * 100}%` }} />
+                      </div>
+                      <span>{r.decisiveWinRate === null ? '—' : `${Math.round(r.decisiveWinRate * 100)}%`}</span>
+                      <span className="text-xs text-muted-foreground">({r.wins}/{r.decisiveVotes})</span>
+                    </div>
                   </td>
                 </tr>
               ))}

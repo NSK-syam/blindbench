@@ -1,6 +1,9 @@
 /** App name — replaced by the CLI during scaffolding */
 export const APP_NAME = 'blindbench'
 
+/** Human-facing product name (APP_NAME stays the lowercase slug). */
+export const APP_DISPLAY_NAME = 'BlindBench'
+
 /** Immutable app identity — data scope keys to this, so renames never
  *  strand your records.
  *

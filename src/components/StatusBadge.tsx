@@ -6,7 +6,7 @@ const STYLE: Record<EvalStatus, { label: string; cls: string }> = {
   generating: { label: 'Generating', cls: 'bg-blue-500/15 text-blue-400' },
   needs_attention: { label: 'Needs attention', cls: 'bg-amber-500/15 text-amber-400' },
   ready: { label: 'Ready to vote', cls: 'bg-emerald-500/15 text-emerald-400' },
-  voting: { label: 'Voting open', cls: 'bg-violet-500/15 text-violet-300' },
+  voting: { label: 'Voting open', cls: 'bg-primary/15 text-primary' },
   closed: { label: 'Closed', cls: 'bg-muted text-foreground' },
 }
 

@@ -6,12 +6,7 @@ import type { PresentedPair } from '../types'
 
 type State = { kind: 'loading' } | { kind: 'done' } | { kind: 'error'; message: string } | { kind: 'pair'; pair: PresentedPair }
 
-const CHOICES: Array<{ choice: PresentedChoice; label: string; key: string }> = [
-  { choice: 'left', label: 'Left is better', key: '1' },
-  { choice: 'right', label: 'Right is better', key: '2' },
-  { choice: 'tie', label: 'Tie', key: '3' },
-  { choice: 'both_bad', label: 'Both bad', key: '4' },
-]
+const KEYS: Record<string, PresentedChoice> = { '1': 'left', '2': 'right', '3': 'tie', '4': 'both_bad' }
 
 export function VotePanel({ evalId, onActivity }: { evalId: string; onActivity?: (mode: 'voting' | 'idle') => void }) {
   const { error: toastError } = useToast()
@@ -49,8 +44,9 @@ export function VotePanel({ evalId, onActivity }: { evalId: string; onActivity?:
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return
-      const c = CHOICES.find((x) => x.key === e.key)
-      if (c) void vote(c.choice)
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const c = KEYS[e.key]
+      if (c) void vote(c)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -63,39 +59,43 @@ export function VotePanel({ evalId, onActivity }: { evalId: string; onActivity?:
   const { pair } = state
   return (
     <Panel>
-      <div className="mb-4 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Comparison {pair.done + 1} of {pair.total}</span>
-        <span>Keys: 1 left · 2 right · 3 tie · 4 both bad</span>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Comparison <span className="font-medium text-foreground">{pair.done + 1}</span> of {pair.total}</span>
+        <span className="hidden sm:inline">Keyboard: 1 left · 2 right · 3 tie · 4 both bad</span>
       </div>
-      <div className="mb-4 rounded-lg bg-muted/50 p-4">
-        <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Prompt</p>
-        <p className="whitespace-pre-wrap text-sm">{pair.prompt}</p>
-        {pair.guidance && <p className="mt-3 text-xs text-muted-foreground"><span className="font-medium">Judge by:</span> {pair.guidance}</p>}
+      <div className="mb-5 rounded-lg border border-border bg-muted/60 p-4">
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Prompt</p>
+        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{pair.prompt}</p>
+        {pair.guidance && <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">Judge by:</span> {pair.guidance}</p>}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <Answer side="Left" text={pair.left} />
-        <Answer side="Right" text={pair.right} />
+        <Answer side="Left" text={pair.left} keyHint="1" disabled={sending} onPick={() => void vote('left')} />
+        <Answer side="Right" text={pair.right} keyHint="2" disabled={sending} onPick={() => void vote('right')} />
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {CHOICES.map((c) => (
-          <Button key={c.choice} variant={c.choice === 'left' || c.choice === 'right' ? 'default' : 'outline'} disabled={sending} onClick={() => void vote(c.choice)}>
-            {c.label} <kbd className="ml-1 text-xs opacity-60">{c.key}</kbd>
-          </Button>
-        ))}
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <span className="text-xs text-muted-foreground">Neither stands out?</span>
+        <Button variant="outline" size="sm" disabled={sending} onClick={() => void vote('tie')}>Tie <kbd className="ml-1 text-[10px] opacity-60">3</kbd></Button>
+        <Button variant="outline" size="sm" disabled={sending} onClick={() => void vote('both_bad')}>Both bad <kbd className="ml-1 text-[10px] opacity-60">4</kbd></Button>
       </div>
     </Panel>
   )
 }
 
 function Panel({ children }: { children: React.ReactNode }) {
-  return <section aria-label="Vote" className="rounded-xl border border-border p-5">{children}</section>
+  return <section aria-label="Vote" className="rounded-xl border border-border bg-card/40 p-4 sm:p-5">{children}</section>
 }
 
-function Answer({ side, text }: { side: string; text: string }) {
+function Answer({ side, text, keyHint, disabled, onPick }: { side: 'Left' | 'Right'; text: string; keyHint: string; disabled: boolean; onPick: () => void }) {
   return (
-    <article className="flex max-h-[28rem] flex-col rounded-lg border border-border">
-      <h3 className="border-b border-border px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{side}</h3>
-      <div className="overflow-y-auto whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{text}</div>
+    <article className="flex flex-col rounded-lg border border-border bg-card">
+      <h3 className="border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{side} answer</h3>
+      <div className="max-h-[26rem] min-h-[7rem] flex-1 overflow-y-auto whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{text}</div>
+      <div className="border-t border-border p-3">
+        <Button className="w-full" disabled={disabled} onClick={onPick} aria-label={`${side} answer is better`}>
+          {side === 'Left' ? '← ' : ''}{side} is better{side === 'Right' ? ' →' : ''}
+          <kbd className="ml-1 text-[10px] opacity-60">{keyHint}</kbd>
+        </Button>
+      </div>
     </article>
   )
 }

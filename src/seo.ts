@@ -16,7 +16,7 @@
  * publishes a Disallow-all robots.txt and no sitemap).
  */
 
-import { APP_NAME } from './constants'
+import { APP_DISPLAY_NAME } from './constants'
 
 /** Injected by prerender.ts: `https://<name>.app.space` from wrangler.toml, or
  *  what `deepspace deploy` passes (staging: spacestest.com). Absent in unit
@@ -24,7 +24,7 @@ import { APP_NAME } from './constants'
 declare const __DEEPSPACE_SITE_ORIGIN__: string | undefined
 
 export const seo = {
-  title: `${APP_NAME} | Blind A/B model comparisons for teams`,
+  title: `${APP_DISPLAY_NAME} | Blind A/B model comparisons for teams`,
   description: 'Generate answers from two or three AI models, share one link, and let your team vote blind on side-by-side pairs, with live standings.',
   /** Public origin for canonical URLs, og:url, and the sitemap — no trailing
    *  slash. Replace with the custom domain once one is attached, e.g.
