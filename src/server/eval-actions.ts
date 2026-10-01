@@ -14,6 +14,7 @@ import {
   anonymousLabels,
   buildPairs,
   canTransition,
+  countsAfterClose,
   findModel,
   isFlipped,
   isPresentedChoice,
@@ -250,8 +251,10 @@ const closeVoting = handler(async (ctx) => {
 /**
  * Orientation key. The pair id alone is visible to the voter and encodes label
  * positions (…--01), and isFlipped ships in the client bundle, so a voter could
- * work out which side is "Model A". The answer ids derive from contestant record
- * ids, which only the owner can read, so they act as a per-pair secret.
+ * work out which side is "Model A" before voting. The answer ids derive from
+ * contestant record ids, which only the owner can read. (Not a strong secret: a
+ * voter's own decisive vote row, or matching answer text across sibling pairs,
+ * still hints at orientation afterwards.)
  */
 function orientationKey(pair: Envelope<PairData>): string {
   return `${pair.recordId}|${pair.data.answerAId}|${pair.data.answerBId}`
@@ -317,12 +320,17 @@ const castVote = handler(async (ctx) => {
     if (/duplicate/i.test(res.error ?? '')) throw new ActionError('You already voted on this comparison')
     throw new ActionError('Could not record your vote')
   }
-  // The status check above and the write are not atomic. If the owner closed
-  // voting in between, withdraw the vote so it can't change revealed results.
+  // The status check above and the write are not atomic. A vote written after the
+  // close never counts (countsAfterClose, applied by reveal and standings); tell
+  // the voter and remove the row as best-effort cleanup.
   const after = await loadEval(ctx.tools, e.recordId)
   if (after.data.status !== 'voting') {
-    await must(ctx.tools.remove('votes', res.data!.recordId), 'Withdraw late vote')
-    throw new ActionError('Voting is closed')
+    const mine = await getOne<VoteData>(ctx.tools, 'votes', res.data!.recordId)
+    if (!mine) throw new ActionError('Could not confirm your vote')
+    if (!countsAfterClose(mine.createdAt, after.updatedAt)) {
+      await ctx.tools.remove('votes', mine.recordId)
+      throw new ActionError('Voting is closed')
+    }
   }
   return ok({ recorded: true })
 })
@@ -336,7 +344,7 @@ const getReveal = handler<RevealData>(async (ctx) => {
     queryAll<ContestantData>(ctx.tools, 'contestants', { evalId }),
     queryAll<PromptData>(ctx.tools, 'prompts', { evalId }),
     queryAll<PairData>(ctx.tools, 'pairs', { evalId }),
-    queryAll<VoteData>(ctx.tools, 'votes', { evalId }),
+    queryAll<VoteData>(ctx.tools, 'votes', { evalId }).then((vs) => vs.filter((v) => countsAfterClose(v.createdAt, e.updatedAt))),
   ])
   const modelOf = new Map(contestants.map((c) => [c.data.label, c.data.modelId]))
   const promptOf = new Map(prompts.map((p) => [p.recordId, p.data]))

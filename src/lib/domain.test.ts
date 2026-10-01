@@ -4,6 +4,7 @@ import {
   buildPairs,
   canTransition,
   computeStandings,
+  countsAfterClose,
   isFlipped,
   isFrozen,
   pickNextPair,
@@ -109,6 +110,18 @@ describe('pickNextPair', () => {
   })
   it('returns null when the voter has done every pair', () => {
     expect(pickNextPair(['p1'], new Map(), new Set(['p1']), 'u')).toBeNull()
+  })
+})
+
+describe('countsAfterClose', () => {
+  const close = '2026-10-01T03:00:00.000Z'
+  it('counts every vote while voting is open', () => {
+    expect(countsAfterClose('2026-10-01T04:00:00.000Z', null)).toBe(true)
+  })
+  it('counts votes written at or before the close, never after', () => {
+    expect(countsAfterClose('2026-10-01T02:59:59.999Z', close)).toBe(true)
+    expect(countsAfterClose(close, close)).toBe(true)
+    expect(countsAfterClose('2026-10-01T03:00:00.001Z', close)).toBe(false)
   })
 })
 

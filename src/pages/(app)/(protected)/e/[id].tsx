@@ -65,7 +65,7 @@ export default function EvalPage() {
         <p className="rounded-xl border border-border p-5 text-sm text-muted-foreground">Voting hasn’t opened yet. This page updates live when it does.</p>
       )}
 
-      {(data.status === 'voting' || data.status === 'closed') && <Standings evalId={id} data={data} />}
+      {(data.status === 'voting' || data.status === 'closed') && <Standings evalId={id} data={data} closeStamp={data.status === 'closed' ? row.updatedAt : null} />}
       {data.status === 'closed' && <Reveal evalId={id} />}
     </div>
   )

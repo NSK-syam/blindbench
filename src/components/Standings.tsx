@@ -1,12 +1,18 @@
 import { useMemo } from 'react'
 import { useQuery } from 'deepspace'
-import { computeStandings } from '../lib/domain'
+import { computeStandings, countsAfterClose, LIMITS } from '../lib/domain'
 import type { EvalData, VoteData } from '../types'
 
 /** Live, order-independent standings derived from the vote rows themselves. */
-export function Standings({ evalId, data }: { evalId: string; data: EvalData }) {
-  const { records, status } = useQuery<VoteData>('votes', { where: { evalId }, limit: 2000 })
-  const votes = records.map((r) => r.data)
+export function Standings({ evalId, data, closeStamp }: { evalId: string; data: EvalData; closeStamp: string | null }) {
+  // One row over the server's ceiling, so overflow is detectable instead of silently undercounted.
+  const { records, status } = useQuery<VoteData>('votes', { where: { evalId }, limit: LIMITS.voteQueryMax + 1 })
+  const truncated = records.length > LIMITS.voteQueryMax
+  // Same cutoff as the reveal: a vote written after the close never counts.
+  const votes = useMemo(
+    () => records.filter((r) => countsAfterClose(r.createdAt, closeStamp)).map((r) => r.data),
+    [records, closeStamp],
+  )
   const rows = useMemo(() => computeStandings(data.labels ?? [], votes), [data.labels, votes])
   const voters = new Set(votes.map((v) => v.voterId)).size
   const covered = new Set(votes.map((v) => v.pairId)).size
@@ -21,6 +27,8 @@ export function Standings({ evalId, data }: { evalId: string; data: EvalData }) 
       </div>
       {status === 'loading' ? (
         <p className="text-sm text-muted-foreground">Loading votes…</p>
+      ) : truncated ? (
+        <p className="text-sm text-muted-foreground">Too many votes to tally live (over {LIMITS.voteQueryMax.toLocaleString()}).</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

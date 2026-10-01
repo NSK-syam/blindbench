@@ -5,13 +5,13 @@
  */
 
 import type { ActionTools } from 'deepspace/worker'
+import { LIMITS } from '../lib/domain'
 
-export type Envelope<T> = { recordId: string; data: T; createdAt?: string | number }
+export type Envelope<T> = { recordId: string; data: T; createdAt?: string; updatedAt?: string }
 
 /** Hard ceiling for any one query. An eval has ≤ 8 prompts × 3 models, so
- *  only `votes` can approach it (24 pairs × ~400 voters); queryAll fails loudly
- *  instead of truncating. */
-export const QUERY_LIMIT = 10_000
+ *  only `votes` can approach it; queryAll fails loudly instead of truncating. */
+export const QUERY_LIMIT = LIMITS.voteQueryMax
 
 export class ActionError extends Error {}
 

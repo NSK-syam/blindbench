@@ -16,6 +16,8 @@ export const LIMITS = {
   guidanceMax: 1000,
   answerMaxOutputTokens: 700,
   importedAnswerMax: 8000,
+  /** Rows any one votes read may return (24 pairs × ~400 voters); past it, reads fail loudly. */
+  voteQueryMax: 10_000,
 } as const
 
 /** Models the owner may pick. Cheap/fast tier from three providers by default. */
@@ -192,6 +194,18 @@ export function pickNextPair(
     }
   }
   return best
+}
+
+/**
+ * Whether a vote counts once voting has closed. `closeStamp` is the closed eval
+ * row's updatedAt (closed is terminal, so the close is its last write). Votes,
+ * evals and that timestamp all come from the same serialized RecordRoom clock,
+ * so "written at or before the close" is a stable cutoff that reveal, standings
+ * and castVote agree on, whether or not a late vote has been cleaned up yet.
+ */
+export function countsAfterClose(voteCreatedAt: string | undefined, closeStamp: string | null | undefined): boolean {
+  if (!closeStamp || !voteCreatedAt) return true
+  return voteCreatedAt <= closeStamp // ISO-8601 UTC strings compare chronologically
 }
 
 /* ── Standings (descriptive, order-independent) ─────────────────────────── */
