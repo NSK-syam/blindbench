@@ -140,12 +140,14 @@ export function hash32(s: string): number {
 /**
  * Whether a voter sees the canonical pair flipped (B on the left). Recomputed
  * server-side when the vote arrives, so the client never asserts orientation.
+ * `pairKey` must include data voters can't read (see orientationKey in
+ * eval-actions), or a voter could recompute which side is which label.
  */
-export function isFlipped(voterId: string, pairId: string): boolean {
+export function isFlipped(voterId: string, pairKey: string): boolean {
   // Raw FNV-1a bits are poorly mixed for ids that differ only in their last
   // characters (sibling pairs …01 / …12): its low bit is just character parity,
   // so those pairs flipped in lockstep. Finalize (murmur3 fmix32) before taking a bit.
-  let h = hash32(`${voterId}:${pairId}`)
+  let h = hash32(`${voterId}:${pairKey}`)
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b)
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
   return ((h ^ (h >>> 16)) & 1) === 1

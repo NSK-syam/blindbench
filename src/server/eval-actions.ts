@@ -247,6 +247,16 @@ const closeVoting = handler(async (ctx) => {
 
 /* ── Voter actions ──────────────────────────────────────────────────────── */
 
+/**
+ * Orientation key. The pair id alone is visible to the voter and encodes label
+ * positions (…--01), and isFlipped ships in the client bundle, so a voter could
+ * work out which side is "Model A". The answer ids derive from contestant record
+ * ids, which only the owner can read, so they act as a per-pair secret.
+ */
+function orientationKey(pair: Envelope<PairData>): string {
+  return `${pair.recordId}|${pair.data.answerAId}|${pair.data.answerBId}`
+}
+
 const nextPair = handler<PresentedPair | null>(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
   if (e.data.status !== 'voting') return ok(null)
@@ -270,7 +280,7 @@ const nextPair = handler<PresentedPair | null>(async (ctx) => {
     getOne<PromptData>(ctx.tools, 'prompts', pair.data.promptId),
   ])
   if (!a || !b || !prompt) throw new ActionError('This comparison is unavailable')
-  const flipped = isFlipped(ctx.userId, pairId)
+  const flipped = isFlipped(ctx.userId, orientationKey(pair))
   return ok({
     pairId,
     prompt: prompt.data.text,
@@ -296,7 +306,7 @@ const castVote = handler(async (ctx) => {
   if (existing.length > 0) throw new ActionError('You already voted on this comparison')
 
   // Orientation is recomputed here, never taken from the client.
-  const outcome = toOutcome(choice, isFlipped(ctx.userId, pair.recordId))
+  const outcome = toOutcome(choice, isFlipped(ctx.userId, orientationKey(pair)))
   const res = await ctx.tools.create('votes', {
     evalId: e.recordId, pairId: pair.recordId, voterId: ctx.userId,
     labelA: pair.data.labelA, labelB: pair.data.labelB, outcome,
@@ -306,6 +316,13 @@ const castVote = handler(async (ctx) => {
   if (!res.success) {
     if (/duplicate/i.test(res.error ?? '')) throw new ActionError('You already voted on this comparison')
     throw new ActionError('Could not record your vote')
+  }
+  // The status check above and the write are not atomic. If the owner closed
+  // voting in between, withdraw the vote so it can't change revealed results.
+  const after = await loadEval(ctx.tools, e.recordId)
+  if (after.data.status !== 'voting') {
+    await must(ctx.tools.remove('votes', res.data!.recordId), 'Withdraw late vote')
+    throw new ActionError('Voting is closed')
   }
   return ok({ recorded: true })
 })

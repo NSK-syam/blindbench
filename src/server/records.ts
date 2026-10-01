@@ -9,18 +9,18 @@ import type { ActionTools } from 'deepspace/worker'
 export type Envelope<T> = { recordId: string; data: T; createdAt?: string | number }
 
 /** Hard ceiling for any one query. An eval has ≤ 8 prompts × 3 models, so
- *  only `votes` can approach it; queryAll fails loudly instead of truncating. */
-export const QUERY_LIMIT = 2000
+ *  only `votes` can approach it (24 pairs × ~400 voters); queryAll fails loudly
+ *  instead of truncating. */
+export const QUERY_LIMIT = 10_000
 
 export class ActionError extends Error {}
 
 export async function queryAll<T>(tools: ActionTools, collection: string, where: Record<string, unknown>): Promise<Envelope<T>[]> {
-  const r = await tools.query<Record<string, unknown>>(collection, { where, limit: QUERY_LIMIT })
+  // `count` is just the number of rows returned, so ask for one extra row to detect truncation.
+  const r = await tools.query<Record<string, unknown>>(collection, { where, limit: QUERY_LIMIT + 1 })
   if (!r.success) throw new ActionError(`Could not read ${collection}`)
   const records = r.data.records as unknown as Envelope<T>[]
-  if (typeof r.data.count === 'number' && r.data.count > records.length) {
-    throw new ActionError(`${collection} result was truncated (${records.length}/${r.data.count})`)
-  }
+  if (records.length > QUERY_LIMIT) throw new ActionError(`${collection} result was truncated (over ${QUERY_LIMIT} rows)`)
   return records
 }
 
