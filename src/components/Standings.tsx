@@ -1,17 +1,19 @@
 import { useMemo } from 'react'
 import { useQuery } from 'deepspace'
-import { computeStandings, countsAfterClose, LIMITS } from '../lib/domain'
+import { computeStandings, LIMITS, votedBeforeClose } from '../lib/domain'
 import type { EvalData, VoteData } from '../types'
 
 /** Live, order-independent standings derived from the vote rows themselves. */
-export function Standings({ evalId, data, closeStamp }: { evalId: string; data: EvalData; closeStamp: string | null }) {
+export function Standings({ evalId, data }: { evalId: string; data: EvalData }) {
   // One row over the server's ceiling, so overflow is detectable instead of silently undercounted.
   const { records, status } = useQuery<VoteData>('votes', { where: { evalId }, limit: LIMITS.voteQueryMax + 1 })
   const truncated = records.length > LIMITS.voteQueryMax
-  // Same cutoff as the reveal: a vote written after the close never counts.
+  // Same cutoff as the reveal: a vote written at or after the close never counts.
+  const closures = useQuery<{ evalId: string }>('closures', { where: { evalId }, limit: 1 })
+  const cutoff = closures.records[0]?.createdAt ?? null
   const votes = useMemo(
-    () => records.filter((r) => countsAfterClose(r.createdAt, closeStamp)).map((r) => r.data),
-    [records, closeStamp],
+    () => records.filter((r) => votedBeforeClose(r.createdAt, cutoff)).map((r) => r.data),
+    [records, cutoff],
   )
   const rows = useMemo(() => computeStandings(data.labels ?? [], votes), [data.labels, votes])
   const voters = new Set(votes.map((v) => v.voterId)).size
@@ -22,10 +24,10 @@ export function Standings({ evalId, data, closeStamp }: { evalId: string; data: 
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="standings" className="text-lg font-semibold">Standings</h2>
         <p className="text-xs text-muted-foreground">
-          {votes.length} votes · {voters} voters · {covered}/{data.pairCount} comparisons reviewed
+          {truncated ? `Over ${LIMITS.voteQueryMax.toLocaleString()} votes` : <>{votes.length} votes · {voters} voters · {covered}/{data.pairCount} comparisons reviewed</>}
         </p>
       </div>
-      {status === 'loading' ? (
+      {status === 'loading' || closures.status === 'loading' ? (
         <p className="text-sm text-muted-foreground">Loading votes…</p>
       ) : truncated ? (
         <p className="text-sm text-muted-foreground">Too many votes to tally live (over {LIMITS.voteQueryMax.toLocaleString()}).</p>

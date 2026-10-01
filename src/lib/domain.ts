@@ -197,15 +197,16 @@ export function pickNextPair(
 }
 
 /**
- * Whether a vote counts once voting has closed. `closeStamp` is the closed eval
- * row's updatedAt (closed is terminal, so the close is its last write). Votes,
- * evals and that timestamp all come from the same serialized RecordRoom clock,
- * so "written at or before the close" is a stable cutoff that reveal, standings
- * and castVote agree on, whether or not a late vote has been cleaned up yet.
+ * Whether a vote counts. `cutoff` is the createdAt of the eval's `closures` row
+ * (null while voting is open). Both stamps come from the same RecordRoom clock,
+ * so reveal, standings and castVote agree on it whether or not a late vote has
+ * been cleaned up yet. Strict `<`: stamps have millisecond resolution, so a vote
+ * stamped in the same millisecond as the close may have landed after it, and
+ * is excluded rather than risk admitting a post-close write.
  */
-export function countsAfterClose(voteCreatedAt: string | undefined, closeStamp: string | null | undefined): boolean {
-  if (!closeStamp || !voteCreatedAt) return true
-  return voteCreatedAt <= closeStamp // ISO-8601 UTC strings compare chronologically
+export function votedBeforeClose(voteCreatedAt: string | undefined, cutoff: string | null | undefined): boolean {
+  if (!cutoff) return true
+  return !!voteCreatedAt && voteCreatedAt < cutoff // ISO-8601 UTC strings compare chronologically
 }
 
 /* ── Standings (descriptive, order-independent) ─────────────────────────── */

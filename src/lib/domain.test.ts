@@ -4,7 +4,7 @@ import {
   buildPairs,
   canTransition,
   computeStandings,
-  countsAfterClose,
+  votedBeforeClose,
   isFlipped,
   isFrozen,
   pickNextPair,
@@ -113,15 +113,17 @@ describe('pickNextPair', () => {
   })
 })
 
-describe('countsAfterClose', () => {
+describe('votedBeforeClose', () => {
   const close = '2026-10-01T03:00:00.000Z'
   it('counts every vote while voting is open', () => {
-    expect(countsAfterClose('2026-10-01T04:00:00.000Z', null)).toBe(true)
+    expect(votedBeforeClose('2026-10-01T04:00:00.000Z', null)).toBe(true)
   })
-  it('counts votes written at or before the close, never after', () => {
-    expect(countsAfterClose('2026-10-01T02:59:59.999Z', close)).toBe(true)
-    expect(countsAfterClose(close, close)).toBe(true)
-    expect(countsAfterClose('2026-10-01T03:00:00.001Z', close)).toBe(false)
+  it('counts only votes stamped strictly before the close', () => {
+    expect(votedBeforeClose('2026-10-01T02:59:59.999Z', close)).toBe(true)
+    // same millisecond: order unknowable, so excluded rather than risk a post-close write
+    expect(votedBeforeClose(close, close)).toBe(false)
+    expect(votedBeforeClose('2026-10-01T03:00:00.001Z', close)).toBe(false)
+    expect(votedBeforeClose(undefined, close)).toBe(false)
   })
 })
 

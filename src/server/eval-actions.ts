@@ -14,7 +14,7 @@ import {
   anonymousLabels,
   buildPairs,
   canTransition,
-  countsAfterClose,
+  votedBeforeClose,
   findModel,
   isFlipped,
   isPresentedChoice,
@@ -63,6 +63,11 @@ async function loadEval(tools: ActionTools, evalId: string): Promise<Envelope<Ev
 
 function requireOwner(e: Envelope<EvalData>, userId: string) {
   if (e.data.ownerId !== userId) throw new ActionError('Only the eval owner can do that')
+}
+
+/** createdAt of the eval's closure row: the immutable voting cutoff, or null while open. */
+async function closeCutoff(tools: ActionTools, evalId: string): Promise<string | null> {
+  return (await getOne<{ evalId: string }>(tools, 'closures', evalId))?.createdAt ?? null
 }
 
 function requireTransition(e: Envelope<EvalData>, to: EvalData['status']) {
@@ -213,8 +218,10 @@ const openVoting = handler(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
   requireOwner(e, ctx.userId)
   requireTransition(e, 'voting')
-
   const evalId = e.recordId
+  // A stale request (read 'ready' before a concurrent open + close) must not reopen.
+  if (await closeCutoff(ctx.tools, evalId)) throw new ActionError('Voting already closed')
+
   const contestants = (await queryAll<ContestantData>(ctx.tools, 'contestants', { evalId })).sort((x, y) => x.data.index - y.data.index)
   const included = [...await includedPromptIds(ctx.tools, evalId)]
   const answers = await queryAll<AnswerData>(ctx.tools, 'answers', { evalId })
@@ -235,6 +242,10 @@ const openVoting = handler(async (ctx) => {
     }, `${evalId}--${s.promptId}--${s.a}${s.b}`), 'Create pair')
   }
   await must(ctx.tools.update('evals', evalId, { status: 'voting', pairCount: specs.length, openedAt: Date.now() }), 'Open voting')
+  if (await closeCutoff(ctx.tools, evalId)) {
+    await must(ctx.tools.update('evals', evalId, { status: 'closed' }), 'Restore closed')
+    throw new ActionError('Voting already closed')
+  }
   return ok({ pairs: specs.length })
 })
 
@@ -242,6 +253,9 @@ const closeVoting = handler(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
   requireOwner(e, ctx.userId)
   requireTransition(e, 'closed')
+  // Fix the cutoff first. A repeat or concurrent close upserts the same row and
+  // keeps its original createdAt, so the cutoff never moves.
+  await must(ctx.tools.create('closures', { evalId: e.recordId }, e.recordId), 'Close voting')
   await must(ctx.tools.update('evals', e.recordId, { status: 'closed', closedAt: Date.now() }), 'Close voting')
   return ok({ status: 'closed' })
 })
@@ -264,6 +278,7 @@ const nextPair = handler<PresentedPair | null>(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
   if (e.data.status !== 'voting') return ok(null)
   const evalId = e.recordId
+  if (await closeCutoff(ctx.tools, evalId)) return ok(null)
 
   const pairs = await queryAll<PairData>(ctx.tools, 'pairs', { evalId })
   const votes = await queryAll<VoteData>(ctx.tools, 'votes', { evalId })
@@ -297,7 +312,7 @@ const nextPair = handler<PresentedPair | null>(async (ctx) => {
 
 const castVote = handler(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
-  if (e.data.status !== 'voting') throw new ActionError('Voting is closed')
+  if (e.data.status !== 'voting' || await closeCutoff(ctx.tools, e.recordId)) throw new ActionError('Voting is closed')
   const choice = ctx.params.choice
   if (!isPresentedChoice(choice)) throw new ActionError('Invalid choice')
   const pair = await getOne<PairData>(ctx.tools, 'pairs', str(ctx.params, 'pairId'))
@@ -320,14 +335,14 @@ const castVote = handler(async (ctx) => {
     if (/duplicate/i.test(res.error ?? '')) throw new ActionError('You already voted on this comparison')
     throw new ActionError('Could not record your vote')
   }
-  // The status check above and the write are not atomic. A vote written after the
-  // close never counts (countsAfterClose, applied by reveal and standings); tell
-  // the voter and remove the row as best-effort cleanup.
-  const after = await loadEval(ctx.tools, e.recordId)
-  if (after.data.status !== 'voting') {
+  // The checks above and the write are not atomic. A vote written at or after the
+  // close cutoff never counts (votedBeforeClose, applied by reveal and standings);
+  // tell the voter and remove the row as best-effort cleanup.
+  const cutoff = await closeCutoff(ctx.tools, e.recordId)
+  if (cutoff) {
     const mine = await getOne<VoteData>(ctx.tools, 'votes', res.data!.recordId)
     if (!mine) throw new ActionError('Could not confirm your vote')
-    if (!countsAfterClose(mine.createdAt, after.updatedAt)) {
+    if (!votedBeforeClose(mine.createdAt, cutoff)) {
       await ctx.tools.remove('votes', mine.recordId)
       throw new ActionError('Voting is closed')
     }
@@ -340,11 +355,12 @@ const getReveal = handler<RevealData>(async (ctx) => {
   const e = await loadEval(ctx.tools, str(ctx.params, 'evalId'))
   if (e.data.status !== 'closed') throw new ActionError('Results are revealed after voting closes')
   const evalId = e.recordId
+  const cutoff = await closeCutoff(ctx.tools, evalId)
   const [contestants, prompts, pairs, votes] = await Promise.all([
     queryAll<ContestantData>(ctx.tools, 'contestants', { evalId }),
     queryAll<PromptData>(ctx.tools, 'prompts', { evalId }),
     queryAll<PairData>(ctx.tools, 'pairs', { evalId }),
-    queryAll<VoteData>(ctx.tools, 'votes', { evalId }).then((vs) => vs.filter((v) => countsAfterClose(v.createdAt, e.updatedAt))),
+    queryAll<VoteData>(ctx.tools, 'votes', { evalId }).then((vs) => vs.filter((v) => votedBeforeClose(v.createdAt, cutoff))),
   ])
   const modelOf = new Map(contestants.map((c) => [c.data.label, c.data.modelId]))
   const promptOf = new Map(prompts.map((p) => [p.recordId, p.data]))

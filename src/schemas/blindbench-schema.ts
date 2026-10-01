@@ -133,6 +133,18 @@ export const votesSchema: CollectionSchema = {
   permissions: signedInReadable,
 }
 
+/**
+ * The voting cutoff: one row per closed eval, record id = evalId. A create with
+ * a known id upserts and keeps the first `_created_at`, and every RecordRoom
+ * write is synchronous, so the first close fixes the cutoff atomically even if
+ * close requests race. Votes count only if written strictly before it.
+ */
+export const closuresSchema: CollectionSchema = {
+  name: 'closures',
+  columns: [text('evalId', { required: true, immutable: true })],
+  permissions: signedInReadable,
+}
+
 export const blindbenchSchemas = [
   evalsSchema,
   contestantsSchema,
@@ -140,4 +152,5 @@ export const blindbenchSchemas = [
   answersSchema,
   pairsSchema,
   votesSchema,
+  closuresSchema,
 ]
