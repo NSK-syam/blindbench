@@ -14,7 +14,7 @@ function fakeTools() {
   const store = new Map<string, Map<string, Row>>()
   let ms = Date.parse('2026-10-01T03:00:00.000Z')
   const clock = { frozen: false, advance: (n: number) => { ms += n } }
-  const hooks: { beforeCreate?: Hook; afterCreate?: Hook } = {}
+  const hooks: { beforeCreate?: Hook; afterCreate?: Hook; failQuery?: string } = {}
   const table = (c: string) => store.get(c) ?? store.set(c, new Map()).get(c)!
   const stamp = () => new Date(clock.frozen ? ms : ++ms).toISOString()
   let ids = 0
@@ -48,6 +48,7 @@ function fakeTools() {
       return r ? { success: true, data: { record: structuredClone(r) } } : { success: false, error: 'not found' }
     },
     async query(collection: string, opts: { where?: Record<string, unknown>; limit?: number } = {}) {
+      if (hooks.failQuery === collection) return { success: false, error: 'unavailable' }
       const records = [...table(collection).values()]
         .filter((r) => Object.entries(opts.where ?? {}).every(([k, v]) => r.data[k] === v))
         .slice(0, opts.limit)
@@ -129,6 +130,19 @@ describe('vote vs close ordering', () => {
     s.table('evals').get('e1')!.data.status = 'voting' // e.g. a stale openVoting write
     expect(await s.vote()).toMatchObject({ success: false, error: 'Voting is closed' })
     expect((await s.run('nextPair', VOTER, {})).data).toBeNull()
+  })
+
+  it('refuses rather than counting everything when the closure cannot be read', async () => {
+    const s = setup()
+    s.hooks.afterCreate = async (c) => {
+      if (c !== 'votes') return
+      s.hooks.afterCreate = undefined
+      await s.close()
+      s.hooks.failQuery = 'closures'
+    }
+    expect((await s.vote()).success).toBe(false)
+    const reveal = await s.run('getReveal', OWNER, {})
+    expect(reveal.success).toBe(false)
   })
 
   it('a stale openVoting cannot reopen a closed eval', async () => {

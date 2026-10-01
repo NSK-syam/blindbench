@@ -65,9 +65,10 @@ function requireOwner(e: Envelope<EvalData>, userId: string) {
   if (e.data.ownerId !== userId) throw new ActionError('Only the eval owner can do that')
 }
 
-/** createdAt of the eval's closure row: the immutable voting cutoff, or null while open. */
+/** createdAt of the eval's closure row: the immutable voting cutoff, or null while open.
+ *  A query (not getOne) so an unreadable closure throws instead of reading as "open". */
 async function closeCutoff(tools: ActionTools, evalId: string): Promise<string | null> {
-  return (await getOne<{ evalId: string }>(tools, 'closures', evalId))?.createdAt ?? null
+  return (await queryAll<{ evalId: string }>(tools, 'closures', { evalId }))[0]?.createdAt ?? null
 }
 
 function requireTransition(e: Envelope<EvalData>, to: EvalData['status']) {
